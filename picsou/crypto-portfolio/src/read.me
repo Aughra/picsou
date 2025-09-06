@@ -1,0 +1,77 @@
+# Suivi de Portefeuille Crypto avec MariaDB
+
+## Introduction
+
+Ce projet permet de suivre un portefeuille de cryptomonnaies en utilisant une base de données MariaDB/MySQL. Il offre des scripts pour importer des transactions, récupérer les prix des cryptomonnaies, et générer des rapports sur les performances du portefeuille.
+
+## Prérequis
+
+- Python 3.7 ou supérieur
+- MariaDB ou MySQL installé et configuré
+- Modules Python : `pymysql`, `requests` (pour `fetch_prices.py`), etc.
+- Un fichier `.env` pour configurer les paramètres de connexion à la base de données
+
+## Installation
+
+1. Cloner le dépôt :
+   ```
+   git clone <url_du_depot>
+   cd crypto-portfolio
+   ```
+
+2. Installer les dépendances Python :
+   ```
+   pip install -r requirements.txt
+   ```
+
+3. Configurer la base de données MariaDB/MySQL et créer la base `portfolio`.
+
+4. Créer un fichier `.env` à la racine du projet avec les variables suivantes :
+   ```
+   DB_HOST=localhost
+   DB_PORT=3306
+   DB_USER=root
+   DB_PASSWORD=mon_mot_de_passe
+   DB_NAME=portfolio
+   ```
+
+## Utilisation
+
+### Importer des transactions
+
+Les transactions au format CSV peuvent être importées dans la base de données avec le script `import_tx.py` :
+
+```
+python src/import_tx.py chemin/vers/transactions.csv
+```
+
+### Récupérer les prix des cryptomonnaies
+
+Pour mettre à jour les prix des cryptomonnaies, utilisez le script `fetch_prices.py` :
+
+```
+python src/fetch_prices.py
+```
+
+### Générer un rapport
+
+Pour générer un rapport sur le portefeuille, exécutez le script `compute_report.py` :
+
+```
+python src/compute_report.py
+```
+
+## Structure du projet
+
+- `src/import_tx.py` : script d'import des transactions depuis un fichier CSV
+- `src/fetch_prices.py` : script de récupération des prix des cryptomonnaies
+- `src/compute_report.py` : script de calcul et génération de rapports
+- `.env` : configuration des paramètres de connexion à la base de données
+- Base MariaDB/MySQL : stockage des transactions, prix, et données du portefeuille
+
+## Notes de sécurité
+
+- Ne jamais committer le fichier `.env` dans un dépôt public.
+- Utiliser des mots de passe forts pour la base de données.
+- Protéger l'accès à la base de données avec des règles de pare-feu adaptées.
+- Sauvegarder régulièrement la base de données pour éviter toute perte de données.
