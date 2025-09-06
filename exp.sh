@@ -20,3 +20,11 @@ fi
 
 cp "$latest" "$DST_FILE"
 echo "✅ Copié : $latest → $DST_FILE"
+
+# Nettoyer automatiquement avec safe_import.py
+if [ -f src/safe_import.py ]; then
+  echo "🧹 Nettoyage avec safe_import.py..."
+  TMP_FILE="${DST_FILE%.csv}_SAFE.csv"
+  python3 src/safe_import.py "$DST_FILE" -o "$TMP_FILE" --head 8 --tail 4
+  mv "$TMP_FILE" "$DST_FILE"
+fi
