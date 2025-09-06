@@ -1,0 +1,60 @@
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+# fichiers temporaires des disques réseau
+.Spotlight-V100
+.Trashes
+._*
+.fseventsd
+.apdisk
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtualenv
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Jupyter / IPython
+.ipynb_checkpoints
+
+# Logs et tests
+*.log
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+.mypy_cache/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+*.manifest
+*.spec
+
+# IDE (PyCharm, VSCode, etc.)
+.vscode/
+.idea/
+*.swp
+*~
+
+# --- SQL / MariaDB ---
+# Sauvegardes ou exports volumineux
+*.sql
+*.sql.gz
+*.dump
+*.bak
+
+# Si tu veux garder tes scripts SQL (migration, init) dans le repo,
+# enlève ce bloc et ajoute un sous-dossier spécifique à ignorer
+# par ex :
+# /dumps/
