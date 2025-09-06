@@ -3,7 +3,6 @@
 .AppleDouble
 .LSOverride
 Icon?
-# fichiers temporaires des disques réseau
 .Spotlight-V100
 .Trashes
 ._*
@@ -54,7 +53,17 @@ dist/
 *.dump
 *.bak
 
-# Si tu veux garder tes scripts SQL (migration, init) dans le repo,
-# enlève ce bloc et ajoute un sous-dossier spécifique à ignorer
-# par ex :
-# /dumps/
+# --- Projet picsou ---
+# Local secrets
+.env
+.env.*.local
+*.local
+*.key
+*.pem
+
+# Données sensibles (ex: exports Ledger Live)
+data/ledger_exports/
+*.csv
+
+# Rapports générés
+reports/
