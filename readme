@@ -1,0 +1,43 @@
+# Gestion de Portefeuille Crypto
+
+Ce projet a pour but de gérer un portefeuille de cryptomonnaies. Il permet d'importer des données de transactions, de récupérer les prix des cryptos, de calculer des rapports et d'organiser les informations dans une base de données. L'objectif est de faciliter le suivi et l'analyse de vos investissements en cryptomonnaies.
+
+## Scripts inclus
+
+- **import_ledger_csv.py** : Ce script importe les transactions depuis un fichier CSV au format Ledger.  
+- **fetch_prices.py** : Il récupère les prix actuels des cryptomonnaies à partir de différentes sources en ligne.  
+- **compute_report.py** : Ce script calcule un rapport détaillé sur l'état du portefeuille, incluant les gains, pertes et valeurs actuelles.  
+- **safe_import.py** : Permet une importation sécurisée des transactions, avec des vérifications supplémentaires pour éviter les erreurs.  
+- **import_tx.py** : Gère l'importation de transactions depuis d'autres formats ou sources spécifiques.  
+- **db.py** : Contient les fonctions pour interagir avec la base de données utilisée par le projet.
+
+Le script `run.sh` exécute uniquement certains scripts principaux (comme l'import CSV, la récupération des prix et le calcul du rapport). Les scripts `safe_import.py` et `import_tx.py` ne sont pas appelés par défaut et doivent être lancés manuellement si besoin.
+
+## Prérequis
+
+- Python 3.x  
+- Les dépendances Python listées dans `requirements.txt` (installer avec `pip install -r requirements.txt`)  
+- Connexion internet pour la récupération des prix
+
+## Exemples d'utilisation
+
+```bash
+# Importer les transactions depuis un fichier CSV Ledger
+python import_ledger_csv.py fichier_transactions.csv
+
+# Récupérer les prix actuels des cryptomonnaies
+python fetch_prices.py
+
+# Calculer et afficher le rapport du portefeuille
+python compute_report.py
+
+# Importer des transactions de façon sécurisée
+python safe_import.py fichier_transactions_securise.csv
+
+# Importer des transactions depuis d'autres sources
+python import_tx.py fichier_autre_format.csv
+```
+
+## Étendre ou ajouter des scripts optionnels
+
+Pour ajouter de nouveaux scripts ou fonctionnalités, créez un nouveau fichier Python dans le dossier du projet. Veillez à respecter la structure existante et à documenter clairement le rôle du script. Vous pouvez ensuite l'appeler manuellement ou modifier `run.sh` pour l'intégrer dans le processus automatique si nécessaire. N'oubliez pas de gérer les dépendances et de tester vos ajouts avant de les utiliser en production.
