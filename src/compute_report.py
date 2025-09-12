@@ -10,25 +10,22 @@ Fonctions principales :
    - le PnL (Profit and Loss)
 3. Exporter les résultats :
    - CSV : reports/snapshot.csv
-   - Graphique : reports/graphs/valeur_vs_investi.png
 
 Usage :
 - Lancer le script directement : python compute_report.py
-- Vérifier les fichiers générés dans le dossier "reports/"
+- Vérifier le fichier généré dans le dossier "reports/"
 """
 
 from pathlib import Path  # stdlib
 from typing import cast
 
-import matplotlib.pyplot as plt  # third-party
 import pandas as pd
 from pandas import DataFrame, Series
 
-from src.db import get_engine  # local
+from datetime import datetime, timezone
+from sqlalchemy import text
 
-# Dossier de sortie pour les graphiques, création si nécessaire
-OUT_DIR = Path("reports/graphs")
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+from src.db import get_engine  # local
 
 
 def load_data() -> tuple[DataFrame, DataFrame]:
@@ -120,33 +117,71 @@ def build_report(tx: DataFrame, last: DataFrame) -> DataFrame:
     return holdings
 
 
-def export_outputs(df: DataFrame) -> None:
+def push_snapshot_to_db(df: DataFrame) -> None:
     """
-    Exporte le rapport en CSV et génère un graphique simple comparant
-    la somme investie et la valeur actuelle totale du portefeuille.
+    Insère le snapshot calculé dans la table `portfolio_snapshot` (historisée, clé primaire (ts, symbol)).
+    Attend un DataFrame `df` avec colonnes: symbol, qty, investi, price_eur, valeur_actuelle, pnl.
+    Crée aussi les colonnes pnl_eur et pnl_pct à partir de `pnl` et `investi` si nécessaire.
     """
-    # Chemin du fichier CSV à générer (un niveau au-dessus du dossier graphique)
-    snap_csv = OUT_DIR.parent / "snapshot.csv"
-    df.to_csv(snap_csv, index=False)
+    if df is None or df.empty:
+        print("[WARN] Aucun résultat à insérer.")
+        return
 
-    # Préparer une série avec les totaux à afficher sur le graphique
-    serie = pd.DataFrame(
+    # Normalisation symboles en minuscule
+    dat = df.copy()
+    dat["symbol"] = dat["symbol"].str.lower()
+
+    # Colonnes attendues
+    if "pnl_eur" not in dat.columns and "pnl" in dat.columns:
+        dat["pnl_eur"] = dat["pnl"].astype(float)
+    elif "pnl_eur" not in dat.columns:
+        dat["pnl_eur"] = dat["valeur_actuelle"].astype(float) - dat["investi"].astype(
+            float
+        )
+
+    # pnl_pct en %; éviter division par zéro
+    inv = dat["investi"].astype(float)
+    dat["pnl_pct"] = dat["pnl_eur"] / inv.replace({0.0: float("nan")}) * 100.0
+    dat["pnl_pct"] = dat["pnl_pct"].fillna(0.0)
+
+    # Timestamp UTC identique pour toutes les lignes
+    ts = datetime.now(timezone.utc)
+    ts_str = ts.strftime("%Y-%m-%d %H:%M:%S")
+
+    rows = [
         {
-            "Investi cumulé (€)": [df["investi"].sum()],
-            "Valeur actuelle (€)": [df["valeur_actuelle"].sum()],
+            "ts": ts_str,
+            "symbol": str(r["symbol"]),
+            "qty": float(r["qty"]),
+            "investi": float(r["investi"]),
+            "price_eur": float(r["price_eur"]),
+            "valeur_actuelle": float(r["valeur_actuelle"]),
+            "pnl_eur": float(r["pnl_eur"]),
+            "pnl_pct": float(r["pnl_pct"]),
         }
-    ).T
+        for _, r in dat.iterrows()
+    ]
 
-    # Tracer un graphique en barres
-    ax = serie.plot(kind="bar", legend=False)
-    ax.set_ylabel("€")  # Label de l'axe Y
-    ax.set_title("Portefeuille – Investi vs Valeur")  # Titre du graphique
+    sql = text(
+        """
+        INSERT INTO portfolio_snapshot
+        (ts, symbol, qty, investi, price_eur, valeur_actuelle, pnl_eur, pnl_pct)
+        VALUES (:ts, :symbol, :qty, :investi, :price_eur, :valeur_actuelle, :pnl_eur, :pnl_pct)
+        ON DUPLICATE KEY UPDATE
+          qty=VALUES(qty),
+          investi=VALUES(investi),
+          price_eur=VALUES(price_eur),
+          valeur_actuelle=VALUES(valeur_actuelle),
+          pnl_eur=VALUES(pnl_eur),
+          pnl_pct=VALUES(pnl_pct)
+        """
+    )
 
-    # Ajuster la mise en page pour éviter les coupures
-    plt.tight_layout()
-    # Sauvegarder le graphique en PNG avec une bonne résolution
-    plt.savefig(OUT_DIR / "valeur_vs_investi.png", dpi=160)
-    plt.close()  # Fermer la figure pour libérer la mémoire
+    eng = get_engine()
+    with eng.begin() as con:
+        con.execute(sql, rows)
+
+    print(f"[OK] {len(rows)} lignes insérées dans portfolio_snapshot @ {ts_str} UTC")
 
 
 def main():
@@ -175,9 +210,20 @@ def main():
     # Afficher un aperçu des premières lignes du rapport
     print(rep[["symbol", "qty", "investi", "price_eur", "valeur_actuelle"]].head())
 
-    # Exporter CSV et graphique
-    export_outputs(rep)
-    print("Rapport généré dans reports/ (CSV + PNG).")
+    # 1) Pousser en base (historisé)
+    push_snapshot_to_db(rep)
+
+    # 2) Export CSV simple (sans graphique)
+    reports_dir = Path("reports")
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    snap_csv = reports_dir / "snapshot.csv"
+    try:
+        rep.to_csv(snap_csv, index=False)
+        print(f"[OK] CSV écrit: {snap_csv}")
+    except Exception as e:
+        print(f"[WARN] CSV non écrit: {e}")
+
+    print("Snapshot poussé en base (et CSV écrit).")
 
 
 if __name__ == "__main__":
