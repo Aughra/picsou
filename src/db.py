@@ -16,6 +16,10 @@ Ces fonctions sont utilisées par d'autres scripts du projet, par exemple :
 
 Cela permet de centraliser la configuration et la gestion des connexions à la base de données.
 
+---
+Changelog:
+- 2025-09-12 19:00 (Europe/Paris) — [Aya] Passage de get_conn() en autocommit=True pour pousser immédiatement chaque requête.
+- 2025-09-12 19:35 (Europe/Paris) — [Aya] Ajout de pool_pre_ping=True dans get_engine() pour éviter les connexions zombies.
 """
 import os
 import pymysql
@@ -37,7 +41,7 @@ def get_conn():
     Crée et retourne une connexion pymysql vers la base de données MariaDB.
 
     Utilise les variables d'environnement pour configurer la connexion.
-    La connexion n'est pas en autocommit, ce qui permet de gérer les transactions manuellement.
+    La connexion est en autocommit, ce qui pousse immédiatement chaque requête.
 
     Retourne un objet pymysql.connections.Connection.
     """
@@ -47,7 +51,7 @@ def get_conn():
         user=os.getenv("DB_USER", "picsou"),  # Nom d'utilisateur pour la base
         password=os.getenv("DB_PASSWORD", ""),  # Mot de passe associé
         database=os.getenv("DB_NAME", "picsou"),  # Nom de la base de données à utiliser
-        autocommit=False,  # Désactive l'autocommit pour gérer les transactions
+        autocommit=True,  # Désactive l'autocommit pour gérer les transactions
         charset="utf8mb4",  # Jeu de caractères utilisé
         cursorclass=pymysql.cursors.DictCursor,  # Curseur qui retourne des dictionnaires (clé=nom colonne)
     )
@@ -63,6 +67,7 @@ def get_engine():
     avec encodage des identifiants pour gérer les caractères spéciaux.
 
     Retourne un objet sqlalchemy.engine.Engine.
+    L'engine utilise pool_pre_ping pour maintenir la validité des connexions dans le pool.
     """
     user = os.getenv("DB_USER", "picsou")  # Récupère le nom d'utilisateur
     password = os.getenv("DB_PASSWORD", "")  # Récupère le mot de passe
@@ -72,4 +77,6 @@ def get_engine():
     u = quote_plus(user)  # Encode le nom d'utilisateur (pour URL)
     pw = quote_plus(password)  # Encode le mot de passe (pour URL)
     url = f"mysql+pymysql://{u}:{pw}@{host}:{port}/{dbname}"  # Construction de l'URL de connexion
-    return create_engine(url, future=True)  # Création et retour de l'engine SQLAlchemy
+    return create_engine(
+        url, future=True, pool_pre_ping=True
+    )  # Création et retour de l'engine SQLAlchemy

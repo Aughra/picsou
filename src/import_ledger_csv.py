@@ -13,6 +13,11 @@ Utilisation :
   LEDGER_CSV=chemin/vers/mon_export.csv python -m src.import_ledger_csv
 
 Le script est tolérant aux ré-imports du même fichier grâce à la déduplication.
+
+
+---
+Changelog:
+- 2025-09-12 19:45 (Europe/Paris) — [Aya] Création du script d’import Ledger CSV (`import_ledger_csv.py`), avec déduplication par hash SHA1 et gestion robuste des formats (dates, nombres, colonnes multilingues).
 """
 
 import csv

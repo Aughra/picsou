@@ -14,6 +14,11 @@ Fonctions principales :
 Usage :
 - Lancer le script directement : python compute_report.py
 - Vérifier le fichier généré dans le dossier "reports/"
+
+---
+Changelog:
+- 2025-09-12 19:00 (Europe/Paris) — [Aya] Suppression de toute génération PNG et passage au push DB (table `portfolio_snapshot` + vue `v_portfolio_latest`). Export CSV simple conservé.
+- 2025-09-12 19:35 (Europe/Paris) — [Aya] Logs de contrôle (totaux investi/valeur/PnL) et robustesse I/O (création du dossier `reports/`).
 """
 
 from pathlib import Path  # stdlib
