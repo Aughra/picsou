@@ -20,8 +20,6 @@ trap 'echo "[ERR] ${BASH_SOURCE[0]}:${LINENO}: commande \"${BASH_COMMAND}\" a é
 # Détecter le dossier du script et s'y placer
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Export du mapping CoinGecko (surchargé par .env si défini dedans)
-export COINS_MAP="btc:bitcoin,eth:ethereum,ada:cardano,avax:avalanche-2,dot:polkadot,xrp:ripple"
 
 # Charger .env s'il existe (export auto de toutes les variables)
 if [ -f .env ]; then
@@ -46,7 +44,5 @@ echo   "[INFO] COINS_MAP=$COINS_MAP"
 "$PYTHON_BIN" -m src.fetch_prices
 "$PYTHON_BIN" -m src.compute_report
 
-# Optionnel : exporter un XLSX prêt pour Excel (décommente si souhaité)
-# "$PYTHON_BIN" -m src.export_latest_to_excel
 
 echo "[OK] Pipeline terminée."
