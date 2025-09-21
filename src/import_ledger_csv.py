@@ -24,6 +24,7 @@ import csv
 import hashlib
 import os
 import re
+from typing import Any, Optional, Sequence
 from datetime import datetime, timezone
 from src.db import get_conn
 
@@ -41,11 +42,23 @@ def _norm_key(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().strip('"').strip("'").lower())
 
 
-def _get_first(d: dict, keys: list[str], default=None):
-    # Cherche la première clé présente dans le dictionnaire parmi une liste de clés candidates
-    for k in keys:
-        if k in d:
-            return d[k]
+def get_first(
+    d: dict[str, Any], keys: list[str], default: Optional[Any] = None
+) -> Optional[Any]:
+    """
+    Récupère la première clé existante dans le dictionnaire.
+
+    Args:
+        d (dict[str, Any]): Dictionnaire à parcourir.
+        keys (list[str]): Liste des clés à vérifier.
+        default (Optional[Any]): Valeur par défaut si aucune clé n'est trouvée.
+
+    Returns:
+        Optional[Any]: La valeur associée à la première clé trouvée ou la valeur par défaut.
+    """
+    for key in keys:
+        if key in d:
+            return d[key]
     return default
 
 
@@ -81,23 +94,21 @@ def _get_first_like(
     return default
 
 
-def _to_float(x, default=0.0) -> float:
-    # Convertit une valeur en float, en gérant les formats avec virgule, espaces, symboles monétaires, etc.
-    if x is None:
-        return float(default)
-    if isinstance(x, (int, float)):
-        return float(x)
-    s = str(x).strip()
-    if s == "":
-        return float(default)
-    # Supprime espaces insécables et remplace virgules par points
-    s = s.replace("\u202f", "").replace("\u00a0", "").replace(" ", "").replace(",", ".")
-    # Supprime les caractères non numériques (sauf . - e E)
-    s = re.sub(r"[^\d\.\-eE]", "", s)
+def to_float(x: Any, default: float = 0.0) -> float:
+    """
+    Convertit une valeur en float, avec une valeur par défaut en cas d'échec.
+
+    Args:
+        x (Any): Valeur à convertir.
+        default (float): Valeur par défaut en cas d'échec.
+
+    Returns:
+        float: La valeur convertie ou la valeur par défaut.
+    """
     try:
-        return float(s)
-    except ValueError:
-        return float(default)
+        return float(x)
+    except (ValueError, TypeError):
+        return default
 
 
 def _parse_dt(value: str) -> datetime:
@@ -134,7 +145,7 @@ def _parse_dt(value: str) -> datetime:
         return datetime.utcnow().replace(tzinfo=timezone.utc)
 
 
-def row_to_tx(row: dict) -> dict:
+def row_to_tx(row: dict[str, Any]) -> dict[str, Any]:
     """
     Transforme une ligne CSV brute en dictionnaire prêt à l'insertion en base.
     Gère les noms de colonnes en français ou anglais, normalise les valeurs,
@@ -189,7 +200,7 @@ def row_to_tx(row: dict) -> dict:
     symbol = (_get_first_like(nrow, currency_keys) or "").strip().lower()
 
     # Quantité avec signe selon type d'opération (ex: retrait négatif, dépôt positif)
-    qty = _to_float(_get_first_like(nrow, amount_keys), 0.0)
+    qty = to_float(_get_first_like(nrow, amount_keys), 0.0)
     op_type = (_get_first_like(nrow, op_type_keys) or "").strip().lower()
     if op_type in ("out", "send", "withdrawal", "withdraw", "sell"):
         qty = -abs(qty)
@@ -201,15 +212,15 @@ def row_to_tx(row: dict) -> dict:
     counter_ticker = (
         (_get_first_like(nrow, countervalue_ticker_keys) or "").strip().upper()
     )
-    counter_at_date = _to_float(_get_first_like(nrow, countervalue_keys), 0.0)
+    counter_at_date = to_float(_get_first_like(nrow, countervalue_keys), 0.0)
     if counter_ticker == "EUR" and qty:
         price_eur = abs(counter_at_date) / abs(qty) if qty != 0 else 0.0
     if price_eur == 0.0:
         # Sinon, fallback sur un prix direct en EUR dans une autre colonne
-        price_eur = _to_float(_get_first_like(nrow, price_eur_fallback_keys), 0.0)
+        price_eur = to_float(_get_first_like(nrow, price_eur_fallback_keys), 0.0)
 
     # Frais en asset convertis en EUR via le prix unitaire si possible
-    fee_asset = _to_float(_get_first_like(nrow, fee_asset_keys), 0.0)
+    fee_asset = to_float(_get_first_like(nrow, fee_asset_keys), 0.0)
     fee_eur = fee_asset * price_eur if price_eur else 0.0
 
     # Note ou hash de la transaction pour identification
@@ -232,25 +243,34 @@ def row_to_tx(row: dict) -> dict:
     }
 
 
-def bulk_insert(rows: list[dict]) -> int:
-    # Insère en base une liste de transactions, ignore les doublons grâce au hash unique
-    if not rows:
-        return 0
-    sql = """
-        INSERT INTO transactions
-          (date_utc, symbol, qty, price_eur, fee_eur, exchange, note, dedup_hash)
-        VALUES
-          (%(date_utc)s, %(symbol)s, %(qty)s, %(price_eur)s, %(fee_eur)s, %(exchange)s, %(note)s, %(dedup_hash)s)
-        ON DUPLICATE KEY UPDATE id = id
-        """
-    con = get_conn()
-    try:
-        with con.cursor() as cur:
-            cur.executemany(sql, rows)
-        con.commit()
-    finally:
-        con.close()
-    return len(rows)
+def bulk_insert(rows: Sequence[dict[str, Any]]) -> int:
+    """
+    Insère en masse des lignes dans la base de données.
+
+    Args:
+        rows (Sequence[dict[str, Any]]): Lignes à insérer.
+
+    Returns:
+        int: Nombre de lignes insérées.
+    """
+    sql = "INSERT INTO transactions (date, amount) VALUES (%s, %s)"
+    formatted_rows = [
+        (str(row["date"]), float(row["amount"])) for row in rows
+    ]  # Forcer les types
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(sql, formatted_rows)
+            return cur.rowcount
+
+
+def get_current_utc_time() -> datetime:
+    """
+    Retourne l'heure UTC actuelle avec fuseau horaire.
+
+    Returns:
+        datetime: Heure UTC actuelle.
+    """
+    return datetime.now(timezone.utc)
 
 
 def main():
