@@ -1,6 +1,24 @@
 <!--
 ############################################################
 CHANGELOG:
+ - [2025-09-21] 0.4.2 {author=agent} {reason: sync Excel — éviter les NULLs (écrire 0 pour numériques + cleanup)}
+   Impact: colonnes "<coin> valeur"/"<coin> acheté"/etc. complètes pour tous les jours
+   Tests: relance run.sh; inspection de v_excel_saisir_btc sans NULL
+############################################################
+-->
+
+<!--
+############################################################
+CHANGELOG:
+ - [2025-09-21] 0.4.1 {author=agent} {reason: backfill incrémental (skip API si jours déjà présents)}
+   Impact: réduit fortement les appels CoinGecko; accélère les exécutions répétées de run.sh
+   Tests: exécution locale; logs "Skip <sym>" quand complet; upsert borné sinon
+############################################################
+-->
+
+<!--
+############################################################
+CHANGELOG:
  - [2025-09-21] 0.4.0 {author=agent} {reason: backfill quotidien de prix + intégration run.sh}
    Impact: nouveau module src/backfill_prices_daily.py; Excel peut consommer toutes les valeurs par jour via les vues
    Tests: exécution de run.sh; vérif des lignes price_snapshot et vues *_coin/totaux/positions

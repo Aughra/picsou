@@ -1,5 +1,8 @@
 ############################################################
 # CHANGELOG:
+# - [2025-09-21] agt017 {author=agent} {reason: éviter les NULLs → forcer 0 pour colonnes numériques + commits}
+# - Impact: les champs numériques (ex: "btc valeur") ne restent plus NULL; nettoyage des NULL existants après sync
+# - Tests: relance de la sync puis SELECT sur v_excel_saisir_btc → absence de NULL
 # - [2025-09-21] agt005 {author=agent} {reason: ajout de vues par monnaie (btc/eth/avax/dot/ada/sol/xrp)}
 # - Impact: crée v_excel_saisir_<coin> avec uniquement les colonnes associées à chaque coin (+ date)
 # - Tests: sync exécutée; SELECT de validation sur chaque vue
@@ -305,6 +308,9 @@ SELECT es.[date],
             """
         )
 
+        # Commit explicite des DDL afin d'assurer la visibilité immédiate des vues/colonnes
+        conn.commit()
+
 
 def load_db_dataframe() -> pd.DataFrame:
     df = build_saisir()
@@ -317,6 +323,7 @@ def load_db_dataframe() -> pd.DataFrame:
 
 def upsert_rows(df: pd.DataFrame, original_cols: List[str]) -> None:
     norm_map: Dict[str, str] = {orig: normalize_col(orig) for orig in original_cols}
+    types = infer_types(df)
 
     with get_conn() as conn:
         cur = conn.cursor()
@@ -355,20 +362,22 @@ def upsert_rows(df: pd.DataFrame, original_cols: List[str]) -> None:
                     date_val = row[c]
                     break
 
-            # Convertir NaN en None pour MSSQL NULL
-            def _to_db(v: Any) -> Any:
+            # Convertir NaN/None → 0 pour numériques; sinon None
+            def _to_db(col_name: str, v: Any) -> Any:
                 try:
                     import math
 
                     if v is None:
-                        return None
+                        return 0 if types.get(col_name) == "DECIMAL(20,2)" else None
                     if isinstance(v, float) and math.isnan(v):
-                        return None
+                        return 0 if types.get(col_name) == "DECIMAL(20,2)" else None
                 except Exception:
                     pass
                 return v
 
-            update_vals = [_to_db(row[o]) for o in original_cols if o.lower() != "date"]
+            update_vals = [
+                _to_db(o, row[o]) for o in original_cols if o.lower() != "date"
+            ]
             insert_vals = [date_val] + update_vals
 
             try:
@@ -377,6 +386,28 @@ def upsert_rows(df: pd.DataFrame, original_cols: List[str]) -> None:
                 logger.error(f"MERGE échoué pour date={date_val}: {e}")
                 raise
 
+        # Commit des MERGE
+        conn.commit()
+
+
+def cleanup_nulls_numeric(df: pd.DataFrame, original_cols: List[str]) -> None:
+    """Remplace en base les NULL des colonnes numériques par 0 pour garantir des séries complètes."""
+    types = infer_types(df)
+    num_cols = [c for c in original_cols if types.get(c) == "DECIMAL(20,2)"]
+    if not num_cols:
+        return
+    norm_map: Dict[str, str] = {orig: normalize_col(orig) for orig in num_cols}
+    with get_conn() as conn:
+        cur = conn.cursor()
+        for orig, norm in norm_map.items():
+            try:
+                cur.execute(
+                    f"UPDATE [{SCHEMA}].[{TABLE_NAME}] SET [{norm}] = 0 WHERE [{norm}] IS NULL"
+                )
+            except Exception as e:
+                logger.error("Nettoyage NULL→0 échoué pour %s: %s", orig, e)
+        conn.commit()
+
 
 def main() -> None:
     logger.info("Construction de la feuille 'Saisir' depuis DB…")
@@ -384,6 +415,8 @@ def main() -> None:
     original_cols: List[str] = list(df.columns)
     ensure_table_and_view(df.head(2000), original_cols)
     upsert_rows(df, original_cols)
+    # Nettoyage final pour éviter les trous de données
+    cleanup_nulls_numeric(df, original_cols)
     logger.info(
         f"Synchronisation terminée → table [{SCHEMA}].[{TABLE_NAME}] et vue [{SCHEMA}].[{VIEW_NAME}]"
     )
