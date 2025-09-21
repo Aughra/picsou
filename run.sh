@@ -45,4 +45,8 @@ echo   "[INFO] COINS_MAP=$COINS_MAP"
 "$PYTHON_BIN" -m src.compute_report
 
 
+# Synchroniser la feuille Excel "Saisir" → calcul depuis DB (pas besoin du CSV)
+"$PYTHON_BIN" tools/sync_excel_saisir.py || echo "[WARN] Sync Excel 'Saisir' a échoué"
+
+
 echo "[OK] Pipeline terminée."

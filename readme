@@ -1,3 +1,22 @@
+<!--
+############################################################
+CHANGELOG:
+ - [2025-09-21] 0.3.1 {author=agent} {reason: ajout CLI de recherche CoinGecko}
+   Impact: nouveau script tools/search_coingecko.py pour aider à compléter COINS_MAP
+   Tests: requêtes de recherche (btc, sol, ripple)
+ - [2025-09-21] 0.3.0 {author=agent} {reason: feuille "Saisir" construite depuis DB (transactions+prices), plus de dépendance au CSV}
+   Impact: run.sh appelle la sync inconditionnellement; vue dbo.v_excel_saisir générée depuis la base
+   Tests: exécution de la pipeline et vérification des lignes/colonnes via SELECT
+ - [2025-09-21] 0.2.1 {author=agent} {reason: correctif création de vue MSSQL dans sync_excel_saisir}
+   Impact: séparation DROP VIEW/CREATE VIEW en deux batches pour éviter l'erreur 111
+   Tests: exécution du script de sync sans erreur, vue recréée
+- [2025-09-21] agt001 {author=agent} {reason: ajout outil conversion Excel → CSV/JSON}
+- Impact: nouvelle section d'utilisation et script sous picsou/tools
+- Tests: exécution locale avec un .xlsx factice; génération de fichiers CSV/JSON
+- Notes: nécessite pandas et openpyxl (ajoutés à requirements.txt)
+############################################################
+-->
+
 # Gestion de Portefeuille Crypto
 
 Ce projet a pour but de gérer un portefeuille de cryptomonnaies. Il permet d'importer des données de transactions, de récupérer les prix des cryptos, de calculer des rapports et d'organiser les informations dans une base de données. L'objectif est de faciliter le suivi et l'analyse de vos investissements en cryptomonnaies.
@@ -7,6 +26,18 @@ Ce projet a pour but de gérer un portefeuille de cryptomonnaies. Il permet d'im
 - **import_ledger_csv.py** : Ce script importe les transactions depuis un fichier CSV au format Ledger.  
 - **fetch_prices.py** : Il récupère les prix actuels des cryptomonnaies à partir de différentes sources en ligne.  
 - **compute_report.py** : Ce script calcule un rapport détaillé sur l'état du portefeuille, incluant les gains, pertes et valeurs actuelles.  
+- **tools/search_coingecko.py** : Recherche d’ids CoinGecko (id/symbol/name) pour renseigner COINS_MAP.  
+
+### Recherche d’un coin (CoinGecko)
+
+Exemple:
+
+```bash
+python picsou/tools/search_coingecko.py --q xrp
+```
+
+Affiche une liste d’ids/symbols/noms (ex: ripple → id=ripple, symbol=xrp) à ajouter dans COINS_MAP (fichier `.env`).
+
 - **safe_import.py** : Permet une importation sécurisée des transactions, avec des vérifications supplémentaires pour éviter les erreurs.  
 - **import_tx.py** : Gère l'importation de transactions depuis d'autres formats ou sources spécifiques.  
 - **db.py** : Contient les fonctions pour interagir avec la base de données utilisée par le projet.
@@ -36,8 +67,42 @@ python safe_import.py fichier_transactions_securise.csv
 
 # Importer des transactions depuis d'autres sources
 python import_tx.py fichier_autre_format.csv
+
+# Convertir un fichier Excel (.xlsx) en CSV/JSON (par feuille)
+python picsou/tools/convert_xlsx_to_csv.py --input picsou/suivi_investissement_crypto.xlsx --outdir picsou/exports --json
 ```
 
 ## Étendre ou ajouter des scripts optionnels
 
 Pour ajouter de nouveaux scripts ou fonctionnalités, créez un nouveau fichier Python dans le dossier du projet. Veillez à respecter la structure existante et à documenter clairement le rôle du script. Vous pouvez ensuite l'appeler manuellement ou modifier `run.sh` pour l'intégrer dans le processus automatique si nécessaire. N'oubliez pas de gérer les dépendances et de tester vos ajouts avant de les utiliser en production.
+
+## Outil: Conversion Excel → CSV/JSON
+
+Chemin: `picsou/tools/convert_xlsx_to_csv.py`
+
+- Entrées: `--input` (fichier .xlsx), `--outdir` (répertoire de sortie)
+- Options: `--sheets` (liste de feuilles à exporter), `--json` (export JSON en plus des CSV)
+- Sorties: un fichier `.csv` par feuille (et `.json` si option activée). Les noms de fichiers sont dérivés des noms de feuilles et normalisés.
+
+Exemple
+
+```bash
+python picsou/tools/convert_xlsx_to_csv.py \
+  --input picsou/suivi_investissement_crypto.xlsx \
+  --outdir picsou/exports \
+  --json
+```
+
+- L'outil nécessite `pandas` et `openpyxl`. Installez les dépendances: `pip install -r picsou/requirements.txt`.
+- Les dates en JSON sont exportées au format ISO.
+
+## Table + Vue pour Excel (feuille "Saisir")
+
+Le script `picsou/tools/sync_excel_saisir.py` crée/maintient et alimente, à partir de la base (transactions + price_snapshot):
+
+- Table: `dbo.excel_saisir` (noms de colonnes normalisés, types: DATE pour `date`, DECIMAL(20,2) pour numériques, NVARCHAR(255) sinon)
+- Vue: `dbo.v_excel_saisir` (expose les colonnes avec les noms identiques à ceux du CSV et dans le même ordre)
+
+Exécution automatique: ajoutée à la fin de `picsou/run.sh` (inconditionnel, plus besoin du CSV).
+
+Connexion Excel: via ODBC SQL Server, pointez directement sur `dbo.v_excel_saisir`. Les en-têtes sont stables et incluent les coins btc, eth, avax, dot, ada, sol, xrp.

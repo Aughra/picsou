@@ -1,5 +1,14 @@
-pymysql>=1.1.0
+############################################################
+# CHANGELOG:
+# - [2025-09-21] agt001 {author=agent} {reason: ajout dépendance openpyxl pour lecture .xlsx}
+# - Impact: permet l'utilisation de l'outil de conversion Excel vers CSV/JSON
+# - Tests: installation via pip sur macOS; import pandas + openpyxl
+# - Notes: versions conservées au minimum; compatible Python 3.10+
+############################################################
+
+pymssql>=2.2.11
 pandas>=2.2.0
+openpyxl>=3.1.2
 requests>=2.31.0
 matplotlib>=3.8.0
 python-dotenv>=1.0.0
