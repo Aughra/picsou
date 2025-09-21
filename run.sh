@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+############################################################
+# CHANGELOG:
+# - [2025-09-21] agt007 {author=agent} {reason: ajout étape backfill quotidien des prix}
+# - Impact: la pipeline récupère toutes les valeurs par jour dans price_snapshot avant le snapshot courant
+# - Tests: exécution locale de run.sh (environnement avec MSSQL et COINS_MAP)
+# - Notes: respecte les limites CoinGecko; ignore les symboles non mappés
+############################################################
 # Strict mode: arrêter dès la première erreur, variables non définies interdites, pipe propage les erreurs
 set -euo pipefail
 
@@ -41,7 +48,13 @@ echo   "[INFO] COINS_MAP=$COINS_MAP"
 
 # Exécution des étapes
 "$PYTHON_BIN" -m src.import_ledger_csv
-"$PYTHON_BIN" -m src.fetch_prices
+
+# Backfill quotidien des prix (CoinGecko market_chart → price_snapshot)
+"$PYTHON_BIN" -m src.backfill_prices_daily || echo "[WARN] Backfill quotidien a échoué"
+
+# Snapshot de prix courant (complément temps réel)
+"$PYTHON_BIN" -m src.fetch_prices || echo "[WARN] fetch_prices a échoué"
+
 "$PYTHON_BIN" -m src.compute_report
 
 

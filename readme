@@ -1,6 +1,15 @@
 <!--
 ############################################################
 CHANGELOG:
+ - [2025-09-21] 0.4.0 {author=agent} {reason: backfill quotidien de prix + intégration run.sh}
+   Impact: nouveau module src/backfill_prices_daily.py; Excel peut consommer toutes les valeurs par jour via les vues
+   Tests: exécution de run.sh; vérif des lignes price_snapshot et vues *_coin/totaux/positions
+############################################################
+-->
+
+<!--
+############################################################
+CHANGELOG:
  - [2025-09-21] 0.3.1 {author=agent} {reason: ajout CLI de recherche CoinGecko}
    Impact: nouveau script tools/search_coingecko.py pour aider à compléter COINS_MAP
    Tests: requêtes de recherche (btc, sol, ripple)
@@ -106,3 +115,11 @@ Le script `picsou/tools/sync_excel_saisir.py` crée/maintient et alimente, à pa
 Exécution automatique: ajoutée à la fin de `picsou/run.sh` (inconditionnel, plus besoin du CSV).
 
 Connexion Excel: via ODBC SQL Server, pointez directement sur `dbo.v_excel_saisir`. Les en-têtes sont stables et incluent les coins btc, eth, avax, dot, ada, sol, xrp.
+
+## Backfill des prix quotidiens (CoinGecko)
+
+Le module `src/backfill_prices_daily.py` récupère l’historique quotidien des prix en EUR pour chaque symbole détecté dans `transactions` (via CoinGecko `market_chart`). Il insère/actualise un point par jour dans `price_snapshot` (MERGE sur (ts, symbol)).
+
+Intégration: `picsou/run.sh` lance automatiquement ce backfill avant le `fetch_prices` courant, garantissant que les calculs et vues (dont `v_excel_saisir` et les vues par monnaies) disposent d’une série journalière complète.
+
+Pré-requis: renseignez `COINS_MAP` dans `.env` (ex: `btc:bitcoin,eth:ethereum,...`). Utilisez `tools/search_coingecko.py` pour trouver les ids.
