@@ -1,5 +1,17 @@
 """
-Script d'importation d'un fichier CSV exporté depuis Ledger Live vers une base de données MariaDB.
+Script d'impo---
+Changelog:
+- 2025-09-21 15:45 (Europe/Paris) — [agent] Correction de la compatibilité SQL Server :
+  * Remplacement de la syntaxe MySQL "ON DUPLICATE KEY UPDATE" par MERGE SQL Server
+  * Modification de bulk_insert() pour traiter les lignes individuellement avec MERGE
+  * Ajout de gestion d'erreurs et commit explicite pour SQL Server
+- 2025-09-21 15:30 (Europe/Paris) — [agent] Correction des erreurs de typage et mise à jour des fonctions obsolètes :
+  * Ajout des annotations de type complètes pour _get_first_like()
+  * Remplacement de datetime.utcnow() obsolète par datetime.now(timezone.utc)
+  * Correction de l'appel à _parse_dt() avec gestion des valeurs None
+  * Mise à jour de bulk_insert() avec le bon schéma de base de données
+  * Ajout du commentaire type: ignore pour les types PyMySQL
+- 2025-09-12 19:45 (Europe/Paris) — [Aya] Création du script d'import Ledger CSV (`import_ledger_csv.py`), avec déduplication par hash SHA1 et gestion robuste des formats (dates, nombres, colonnes multilingues).tion d'un fichier CSV exporté depuis Ledger Live vers une base de données MariaDB.
 Ce script lit un fichier CSV contenant les transactions exportées de Ledger Live, les transforme en un format adapté,
 puis les insère dans une table `transactions` en base de données.
 
@@ -63,8 +75,11 @@ def get_first(
 
 
 def _get_first_like(
-    d: dict, candidates: list[str], regexes: list[str] | None = None, default=None
-):
+    d: dict[str, Any],
+    candidates: list[str],
+    regexes: list[str] | None = None,
+    default: Optional[Any] = None,
+) -> Optional[Any]:
     """
     Cherche dans un dictionnaire la première valeur dont la clé normalisée correspond :
     - soit exactement à une des clés candidates,
@@ -118,7 +133,7 @@ def _parse_dt(value: str) -> datetime:
     Si la chaîne est vide ou invalide, retourne la date/heure actuelle UTC.
     """
     if not value:
-        return datetime.utcnow().replace(tzinfo=timezone.utc).astimezone(timezone.utc)
+        return datetime.now(timezone.utc)
     s = value.strip().replace("Z", "")
     # Essai de plusieurs formats courants
     for fmt in (
@@ -142,7 +157,7 @@ def _parse_dt(value: str) -> datetime:
         return dt
     except Exception:
         # Si tout échoue, retourne maintenant UTC
-        return datetime.utcnow().replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc)
 
 
 def row_to_tx(row: dict[str, Any]) -> dict[str, Any]:
@@ -196,7 +211,7 @@ def row_to_tx(row: dict[str, Any]) -> dict[str, Any]:
 
     # Extraction et normalisation des valeurs clés
     date_val = _get_first_like(nrow, date_keys)
-    dt = _parse_dt(date_val)
+    dt = _parse_dt(str(date_val) if date_val is not None else "")
     symbol = (_get_first_like(nrow, currency_keys) or "").strip().lower()
 
     # Quantité avec signe selon type d'opération (ex: retrait négatif, dépôt positif)
@@ -253,14 +268,53 @@ def bulk_insert(rows: Sequence[dict[str, Any]]) -> int:
     Returns:
         int: Nombre de lignes insérées.
     """
-    sql = "INSERT INTO transactions (date, amount) VALUES (%s, %s)"
-    formatted_rows = [
-        (str(row["date"]), float(row["amount"])) for row in rows
-    ]  # Forcer les types
+    if not rows:
+        return 0
+
+    # Utilisation de MERGE pour SQL Server (gestion des doublons)
+    sql = """
+        MERGE transactions AS target
+        USING (VALUES (%s, %s, %s, %s, %s, %s, %s, %s)) AS source 
+        (date_utc, symbol, qty, price_eur, fee_eur, exchange, note, dedup_hash)
+        ON target.dedup_hash = source.dedup_hash
+        WHEN MATCHED THEN
+            UPDATE SET 
+                qty = source.qty,
+                price_eur = source.price_eur,
+                fee_eur = source.fee_eur,
+                exchange = source.exchange,
+                note = source.note
+        WHEN NOT MATCHED THEN
+            INSERT (date_utc, symbol, qty, price_eur, fee_eur, exchange, note, dedup_hash)
+            VALUES (source.date_utc, source.symbol, source.qty, source.price_eur, 
+                   source.fee_eur, source.exchange, source.note, source.dedup_hash);
+    """
+
+    count = 0
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.executemany(sql, formatted_rows)
-            return cur.rowcount
+            # Traiter chaque ligne individuellement car MERGE ne fonctionne pas bien avec executemany
+            for row in rows:
+                try:
+                    cur.execute(
+                        sql,
+                        (
+                            row["date_utc"],
+                            row["symbol"],
+                            float(row["qty"]),
+                            float(row["price_eur"]),
+                            float(row["fee_eur"]),
+                            row["exchange"],
+                            row["note"],
+                            row["dedup_hash"],
+                        ),
+                    )
+                    count += cur.rowcount
+                except Exception as e:
+                    print(f"Erreur lors de l'insertion de la ligne {row}: {e}")
+                    continue
+            conn.commit()
+    return count
 
 
 def get_current_utc_time() -> datetime:

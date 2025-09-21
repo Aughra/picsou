@@ -1,4 +1,3 @@
-import pytest
 from src.import_ledger_csv import get_first, to_float, row_to_tx, bulk_insert
 from typing import Any
 

@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 
 import requests
 
-from db import get_conn
+from src.db import get_conn
 
 # Map symbol -> coingecko id (depuis .env ou valeurs par défaut)
 # Cette variable récupère une chaîne de caractères de type "btc:bitcoin,eth:ethereum,..."
@@ -98,18 +98,29 @@ def upsert_prices(prices: dict[str, float], ts: str) -> None:
     if not prices:
         # Rien à faire si le dictionnaire est vide
         return
-    # Préparation des données à insérer dans la base
-    rows = [{"ts": ts, "symbol": s, "price_eur": p} for s, p in prices.items()]
+
+    # Utilisation de MERGE pour SQL Server (gestion des doublons)
     sql = """
-        INSERT INTO price_snapshot (ts, symbol, price_eur)
-        VALUES (%(ts)s, %(symbol)s, %(price_eur)s)
-        ON DUPLICATE KEY UPDATE price_eur = VALUES(price_eur)
-        """
+        MERGE price_snapshot AS target
+        USING (VALUES (%s, %s, %s)) AS source (ts, symbol, price_eur)
+        ON target.ts = source.ts AND target.symbol = source.symbol
+        WHEN MATCHED THEN
+            UPDATE SET price_eur = source.price_eur
+        WHEN NOT MATCHED THEN
+            INSERT (ts, symbol, price_eur)
+            VALUES (source.ts, source.symbol, source.price_eur);
+    """
+
     con = get_conn()  # Connexion à la base de données
     try:
         with con.cursor() as cur:
-            # Exécution d'une insertion multiple avec gestion des doublons (upsert)
-            cur.executemany(sql, rows)
+            # Traiter chaque prix individuellement car MERGE ne fonctionne pas bien avec executemany
+            for symbol, price in prices.items():
+                try:
+                    cur.execute(sql, (ts, symbol, float(price)))
+                except Exception as e:
+                    print(f"Erreur lors de l'insertion du prix {symbol}: {e}")
+                    continue
         con.commit()  # Validation de la transaction
     finally:
         con.close()  # Fermeture de la connexion
@@ -125,7 +136,8 @@ def main():
         with con.cursor() as cur:
             # Récupère la liste distincte des symboles en minuscules depuis la table transactions
             cur.execute("SELECT DISTINCT LOWER(symbol) AS s FROM transactions")
-            syms = [r["s"] for r in cur.fetchall()]
+            results = cur.fetchall()
+            syms = [r[0] for r in results] if results else []
     finally:
         con.close()  # Fermeture de la connexion
 

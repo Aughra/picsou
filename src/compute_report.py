@@ -28,9 +28,8 @@ import pandas as pd
 from pandas import DataFrame, Series
 
 from datetime import datetime, timezone
-from sqlalchemy import text
 
-from src.db import get_engine  # local
+from src.db import get_engine, get_conn  # local
 
 
 def load_data() -> tuple[DataFrame, DataFrame]:
@@ -153,40 +152,55 @@ def push_snapshot_to_db(df: DataFrame) -> None:
     ts = datetime.now(timezone.utc)
     ts_str = ts.strftime("%Y-%m-%d %H:%M:%S")
 
-    rows = [
-        {
-            "ts": ts_str,
-            "symbol": str(r["symbol"]),
-            "qty": float(r["qty"]),
-            "investi": float(r["investi"]),
-            "price_eur": float(r["price_eur"]),
-            "valeur_actuelle": float(r["valeur_actuelle"]),
-            "pnl_eur": float(r["pnl_eur"]),
-            "pnl_pct": float(r["pnl_pct"]),
-        }
-        for _, r in dat.iterrows()
-    ]
-
-    sql = text(
-        """
-        INSERT INTO portfolio_snapshot
+    # Utilisation de MERGE pour SQL Server (gestion des doublons)
+    sql = """
+        MERGE portfolio_snapshot AS target
+        USING (VALUES (%s, %s, %s, %s, %s, %s, %s, %s)) AS source 
         (ts, symbol, qty, investi, price_eur, valeur_actuelle, pnl_eur, pnl_pct)
-        VALUES (:ts, :symbol, :qty, :investi, :price_eur, :valeur_actuelle, :pnl_eur, :pnl_pct)
-        ON DUPLICATE KEY UPDATE
-          qty=VALUES(qty),
-          investi=VALUES(investi),
-          price_eur=VALUES(price_eur),
-          valeur_actuelle=VALUES(valeur_actuelle),
-          pnl_eur=VALUES(pnl_eur),
-          pnl_pct=VALUES(pnl_pct)
-        """
-    )
+        ON target.ts = source.ts AND target.symbol = source.symbol
+        WHEN MATCHED THEN
+            UPDATE SET 
+                qty = source.qty,
+                investi = source.investi,
+                price_eur = source.price_eur,
+                valeur_actuelle = source.valeur_actuelle,
+                pnl_eur = source.pnl_eur,
+                pnl_pct = source.pnl_pct
+        WHEN NOT MATCHED THEN
+            INSERT (ts, symbol, qty, investi, price_eur, valeur_actuelle, pnl_eur, pnl_pct)
+            VALUES (source.ts, source.symbol, source.qty, source.investi, 
+                   source.price_eur, source.valeur_actuelle, source.pnl_eur, source.pnl_pct);
+    """
 
-    eng = get_engine()
-    with eng.begin() as con:
-        con.execute(sql, rows)
+    count = 0
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            # Traiter chaque ligne individuellement car MERGE ne fonctionne pas bien avec executemany
+            for _, r in dat.iterrows():
+                try:
+                    cur.execute(
+                        sql,
+                        (
+                            ts_str,
+                            str(r["symbol"]),  # type: ignore
+                            float(r["qty"]),  # type: ignore
+                            float(r["investi"]),  # type: ignore
+                            float(r["price_eur"]),  # type: ignore
+                            float(r["valeur_actuelle"]),  # type: ignore
+                            float(r["pnl_eur"]),  # type: ignore
+                            float(r["pnl_pct"]),  # type: ignore
+                        ),
+                    )
+                    count += cur.rowcount
+                except Exception as e:
+                    print(f"Erreur lors de l'insertion de {r['symbol']}: {e}")
+                    continue
+        conn.commit()
+    finally:
+        conn.close()
 
-    print(f"[OK] {len(rows)} lignes insérées dans portfolio_snapshot @ {ts_str} UTC")
+    print(f"[OK] {count} lignes insérées dans portfolio_snapshot @ {ts_str} UTC")
 
 
 def main():
